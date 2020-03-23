@@ -25,6 +25,7 @@ class BuildTaskStatusMessage(TestCase):
             'worker_count': 1,
             'running_count': 2,
             'queued_count': 3,
+            'pending_count': 4,
         }
 
         item = TaskStatusMessageItem(queue=queue_info, analyses=[])
@@ -37,6 +38,7 @@ class BuildTaskStatusMessage(TestCase):
             'worker_count': 1,
             'running_count': 2,
             'queued_count': 3,
+            'pending_count': 4,
         }
         analysis = fake_analysis()
 
@@ -56,6 +58,7 @@ class BuildTaskStatusMessage(TestCase):
             'worker_count': 1,
             'running_count': 2,
             'queued_count': 3,
+            'pending_count': 4,
         }
         analysis = fake_analysis()
         task_status = fake_analysis_task_status()
