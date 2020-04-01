@@ -243,7 +243,7 @@ def record_losses_files(self, result, analysis_id=None, initiator_id=None, slug=
 
     # Store logs and output
     analysis.run_log_file = store_file(result['log_location'], 'application/gzip', initiator)
-    analysis.output_file  = store_file(result['output_location'], 'application/gzip', initiator)
+    analysis.output_file = store_file(result['output_location'], 'application/gzip', initiator)
 
     analysis.save()
     return result
@@ -385,7 +385,7 @@ def handle_task_failure(
         logger.exception(str(e))
 
     # cleanup the temporary run files
-    if not settings.getboolean('worker', 'KEEP_RUN_DIR', fallback=False):
+    if not settings.getboolean('worker', 'KEEP_RUN_DIR', fallback=False) and run_data_uuid:
         rmtree(
             os.path.join(settings.get('worker', 'run_data_dir', fallback='/data'), f'analysis-{analysis_id}-{run_data_uuid}')
         )
