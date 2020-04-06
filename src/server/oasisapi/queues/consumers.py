@@ -53,9 +53,13 @@ def send_task_status_message(items: List[TaskStatusMessageItem]):
     )
 
 
-def build_all_queue_status_message():
+def build_all_queue_status_message(analysis_filter=None):
     from src.server.oasisapi.analyses.models import Analysis
     from src.server.oasisapi.queues.utils import get_queues_info
+
+    analysis_filter = analysis_filter or {
+        'status__in': [Analysis.status_choices.INPUTS_GENERATION_STARTED, Analysis.status_choices.RUN_STARTED]
+    }
 
     # filter queues with some nodes or activity
     all_queues = get_queues_info()
@@ -68,7 +72,10 @@ def build_all_queue_status_message():
             analyses=[TaskStatusMessageAnalysisItem(
                 analysis=a,
                 updated_tasks=[]
-            ) for a in Analysis.objects.filter(sub_task_statuses__queue_name=q['name']).distinct()]
+            ) for a in Analysis.objects.filter(**{
+                'sub_task_statuses__queue_name': q['name'],
+                **analysis_filter,
+            }).distinct()]
         ))
 
     return build_task_status_message(status_message)
