@@ -127,7 +127,7 @@ def get_queues_info() -> List[QueueInfo]:
 
 
 def filter_queues_info(
-    queue_names: Union[Collection[str], str],
+    queue_names: Optional[Union[Collection[str], str]] = None,
     info: Optional[List[Dict[str, int]]] = None
 ) -> List[Dict[str, int]]:
     """
@@ -143,5 +143,5 @@ def filter_queues_info(
     info = info or get_queues_info()
 
     return [
-        q for q in info if (q['name'] in queue_names or q['name'] == queue_names)
+        q for q in info if (queue_names is None or q['name'] in queue_names or q['name'] == queue_names)
     ]
