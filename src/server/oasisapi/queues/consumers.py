@@ -57,11 +57,11 @@ def build_task_status_message(items: List[TaskStatusMessageItem], message_type='
     )
 
 
-def send_task_status_message(items: List[TaskStatusMessageItem]):
+def send_task_status_message(items: dict):
     layer = get_channel_layer()
     async_to_sync(layer.group_send)(
         'queue_status',
-        build_task_status_message(items)
+        items
     )
 
 

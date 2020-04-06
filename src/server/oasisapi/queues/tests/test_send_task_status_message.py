@@ -17,7 +17,7 @@ class SendTaskStatusMessage(TestCase):
 
         with freeze_time(), patch('src.server.oasisapi.queues.consumers.get_channel_layer', return_value=layer), \
                 patch('src.server.oasisapi.queues.consumers.async_to_sync', return_value=sync_call) as async_to_sync_mock:
-            send_task_status_message([])
+            send_task_status_message(build_task_status_message([]))
 
             async_to_sync_mock.assert_called_once_with(layer.group_send)
             sync_call.assert_called_once_with('queue_status', build_task_status_message([]))

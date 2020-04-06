@@ -14,7 +14,8 @@ from model_utils.choices import Choices
 from rest_framework.exceptions import ValidationError
 from rest_framework.reverse import reverse
 
-from src.server.oasisapi.queues.consumers import send_task_status_message, TaskStatusMessageItem, TaskStatusMessageAnalysisItem
+from src.server.oasisapi.queues.consumers import send_task_status_message, TaskStatusMessageItem, \
+    TaskStatusMessageAnalysisItem, build_task_status_message
 from ..files.models import RelatedFile
 from ..analysis_models.models import AnalysisModel
 from ..data_files.models import DataFile
@@ -47,7 +48,7 @@ class AnalysisTaskStatusQuerySet(models.QuerySet):
                 updated_tasks=statuses,
             ) for analysis, statuses in analyses.items()])
 
-        send_task_status_message(status_message)
+        send_task_status_message(build_task_status_message(status_message))
 
     def create_statuses(self, objs):
         """
