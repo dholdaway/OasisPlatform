@@ -629,11 +629,11 @@ def generate_losses_chunk(self, params, chunk_idx, num_chunks, analysis_id=None,
 
     chunk_params = {
         **params,
+        'process_number': chunk_idx,
         'script_fp': f'{params["script_fp"]}.{chunk_idx}',
         'ktools_fifo_queue_dir': os.path.join(params['model_run_fp'], 'fifo'),
         'ktools_work_dir': os.path.join(params['model_run_fp'], 'work'),
     }
-
     Path(chunk_params['ktools_work_dir']).mkdir(parents=True, exist_ok=True)
     Path(chunk_params['ktools_fifo_queue_dir']).mkdir(parents=True, exist_ok=True)
 
