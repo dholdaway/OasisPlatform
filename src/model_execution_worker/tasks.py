@@ -683,7 +683,7 @@ def generate_losses_output(self, params, analysis_id=None, slug=None, **kwargs):
 
     return {
         **res,
-        'output_location': filestore.put(os.path.join(res['model_run_fp'], 'output')),
+        'output_location': filestore.put(os.path.join(res['model_run_fp'], 'output'), arcname='output'),
         'log_location': filestore.put(os.path.join(res['model_run_fp'], 'log')),
     }
 
