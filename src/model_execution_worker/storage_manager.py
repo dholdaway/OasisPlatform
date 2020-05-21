@@ -49,8 +49,11 @@ class BaseStorageConnector(object):
     `server` and `worker` containers
     """
     def __init__(self, setting, logger=None):
+
+        # Use for caching files across multiple runs, set value 'None' or 'False' to disable
+        self.cache_root = setting.get('worker', 'CACHE_DIR', fallback='/tmp/data-cache')
+
         self.media_root = setting.get('worker', 'MEDIA_ROOT')
-        self.cache_root = setting.get('worker', 'CACHE_DIR', fallback='/tmp/data')
         self.storage_connector = 'FS-SHARE'
         self.settings = setting
         self.logger = logger or logging.getLogger()
@@ -99,7 +102,7 @@ class BaseStorageConnector(object):
         else:
             return False
 
-    def _store_file(self, file_path, storage_fname, storage_subdir, suffix=None, **kwargs):
+    def _store_file(self, file_path, storage_fname, storage_subdir='', suffix=None, **kwargs):
         """ Copy a file to `media_root`
 
         Places the file in `self.media_root` which is the shared storage location
@@ -129,9 +132,9 @@ class BaseStorageConnector(object):
 
         self.logger.info('Store file: {} -> {}'.format(file_path, stored_fp))
         shutil.copy(file_path, stored_fp)
-        return store_reference
+        return os.path.join(storage_subdir, store_reference)
 
-    def _store_dir(self, directory_path, storage_fname, storage_subdir, suffix=None, arcname=None, **kwargs):
+    def _store_dir(self, directory_path, storage_fname, storage_subdir='', suffix=None, arcname=None, **kwargs):
         """ Compress and store a directory
 
         Creates a compressed .tar.gz of all files under `directory_path`
@@ -167,7 +170,7 @@ class BaseStorageConnector(object):
         stored_fp = os.path.join(storage_dir, store_reference)
         self.compress(stored_fp, directory_path, arcname)
         self.logger.info('Store dir: {} -> {}'.format(directory_path, stored_fp))
-        return store_reference
+        return os.path.join(storage_subdir, store_reference)
 
     def extract(self, archive_fp, directory):
         """ Extract tar file
@@ -209,7 +212,7 @@ class BaseStorageConnector(object):
         with tarfile.open(archive_fp, 'w:gz') as tar:
             tar.add(directory, arcname=arcname)
 
-    def get(self, reference, output_path="", subdir='', cache_dir=None):
+    def get(self, reference, output_path="", subdir=''):
         """ Retrieve stored object
 
         Top level 'get from storage' function
@@ -229,9 +232,6 @@ class BaseStorageConnector(object):
         :param subdir: Store a file under this sub directory path
         :type  subdir: str
 
-        :param cache_dir: If given, check for requested file in cached before downloading.
-        :type  cache_dir: str
-
         :return: Absolute filepath to stored Object
         :rtype str
         """
@@ -246,14 +246,13 @@ class BaseStorageConnector(object):
             else:
                 fpath = output_path
 
-            if cache_dir:
-                cached_dir_path = os.path.join(self.cache_root, cache_dir)
-                cached_file = os.path.join(cached_dir_path, fname)
+            if self.cache_root:
+                cached_file = os.path.join(self.cache_root, fname)
                 if os.path.isfile(cached_file):
                     logging.info('Get from Cache: {}'.format(fname))
                     return os.path.abspath(cached_file)
                 else:
-                    os.makedirs(cached_dir_path, exist_ok=True)
+                    os.makedirs(self.cache_root, exist_ok=True)
                     fpath = cached_file
 
             os.makedirs(os.path.dirname(fpath), exist_ok=True)
@@ -282,7 +281,7 @@ class BaseStorageConnector(object):
         else:
             return None
 
-    def put(self, reference, filename=None, subdir='', suffix=None, arcname=None, cache_dir=None):
+    def put(self, reference, filename=None, subdir='', suffix=None, arcname=None):
         """ Place object in storage
 
         Top level send to storage function,
@@ -307,9 +306,6 @@ class BaseStorageConnector(object):
         :param suffix: Set the filename extension defaults to `tar.gz`
         :type suffix: str
 
-        :param cache_dir: When using remote storage also copy the object to `cache_dir`.
-        :type  cache_dir: str
-
         :return: access storage reference returned from self._store_file, self._store_dir
                  This will either be a pre-signed URL or absolute filepath
         :rtype str
@@ -319,15 +315,14 @@ class BaseStorageConnector(object):
         if os.path.isfile(reference):
             return self._store_file(
                 reference,
-                cache_dir=cache_dir,
                 storage_fname=filename,
                 storage_subdir=subdir,
-                suffix=suffix
+                suffix=suffix,
+                arcname=arcname
             )
         elif os.path.isdir(reference):
             return self._store_dir(
                 reference,
-                cache_dir=cache_dir,
                 storage_fname=filename,
                 storage_subdir=subdir,
                 suffix=suffix,
@@ -456,7 +451,7 @@ class AwsObjectStore(BaseStorageConnector):
             self._bucket = self.connection.Bucket(self.bucket_name)
         return self._bucket
 
-    def _store_file(self, file_path, cache_dir, storage_fname, storage_subdir, suffix=None):
+    def _store_file(self, file_path, storage_fname, storage_subdir, suffix=None):
         """ Overloaded function for AWS file storage
 
         Uploads the Object pointed to by `file_path`
@@ -470,9 +465,6 @@ class AwsObjectStore(BaseStorageConnector):
         :param storage_fname: Set the name of stored file, instead of uuid
         :type  storage_fname: str
 
-        :param storage_subdir: Store object in given sub directory
-        :type  storage_subdir: str
-
         :param suffix: Set the filename extension
         :type suffix: str
 
@@ -485,17 +477,16 @@ class AwsObjectStore(BaseStorageConnector):
         filename = storage_fname if storage_fname else self._get_unique_filename(ext)
         object_name = os.path.join(storage_subdir, filename)
 
-        if cache_dir:
-            dir_path = os.path.join(self.cache_root, cache_dir)
-            os.makedirs(dir_path, exist_ok=True)
-            cached_fp = os.path.join(dir_path, filename)
+        if self.cache_root:
+            os.makedirs(self.cache_root, exist_ok=True)
+            cached_fp = os.path.join(self.cache_root, filename)
             shutil.copy(file_path, cached_fp)
 
         self.upload(object_name, file_path)
         self.logger.info('Stored S3: {} -> {}'.format(file_path, object_name))
         return self.url(object_name)
 
-    def _store_dir(self, directory_path, cache_dir, storage_fname, storage_subdir, suffix=None, arcname=None):
+    def _store_dir(self, directory_path, storage_fname, storage_subdir, suffix=None, arcname=None):
         """ Overloaded function for AWS Directory storage
 
         Creates a compressed .tar.gz of all files under `directory_path`
@@ -508,9 +499,6 @@ class AwsObjectStore(BaseStorageConnector):
 
         :param storage_fname: Set the name of stored file, instead of uuid
         :type  storage_fname: str
-
-        :param storage_subdir: Store object in given sub directory
-        :type  storage_subdir: str
 
         :param suffix: Set the filename extension
                        defaults to `tar.gz`
@@ -534,10 +522,9 @@ class AwsObjectStore(BaseStorageConnector):
             self.compress(archive_path, directory_path, arcname)
             self.upload(object_name, archive_path)
 
-            if cache_dir:
-                dir_path = os.path.join(self.cache_root, cache_dir)
-                os.makedirs(dir_path, exist_ok=True)
-                cached_fp = os.path.join(dir_path, filename)
+            if self.cache_root:
+                os.makedirs(self.cache_root, exist_ok=True)
+                cached_fp = os.path.join(self.cache_root, filename)
                 shutil.copy(archive_path, cached_fp)
 
         self.logger.info('Stored S3: {} -> {}'.format(directory_path, object_name))

@@ -233,11 +233,15 @@ class Controller:
         queue = cls.get_generate_inputs_queue(analysis, initiator)
         base_kwargs = {
             'loc_file': analysis.portfolio.get_link('location_file'),
+            'settings_file': analysis.get_link('settings_file'),
+            'complex_data_files': analysis.create_complex_model_data_file_dicts() or None,
+        }
+        files_kwargs = {
+            'loc_file': analysis.portfolio.get_link('location_file'),
             'acc_file': analysis.portfolio.get_link('accounts_file'),
             'info_file': analysis.portfolio.get_link('reinsurance_info_file'),
             'scope_file': analysis.portfolio.get_link('reinsurance_scope_file'),
-            'input_location': analysis.get_link('input_file'),
-            'settings_file': analysis.get_link('settings_file'),
+            'analysis_settings_file': analysis.get_link('settings_file'),
             'complex_data_files': analysis.create_complex_model_data_file_dicts() or None,
         }
 
@@ -286,7 +290,7 @@ class Controller:
                 'Write input files',
                 'write-input-files',
                 queue,
-                TaskParams(**base_kwargs),
+                TaskParams(**files_kwargs),
             ),
             cls.get_subtask_statuses_and_signature(
                 'record_input_files',
@@ -296,7 +300,6 @@ class Controller:
                 'Record input files',
                 'record-input-files',
                 'celery',
-                #TaskParams(**base_kwargs),
             ),
             cls.get_subtask_statuses_and_signature(
                 'cleanup_input_generation',
@@ -306,7 +309,6 @@ class Controller:
                 'Cleanup input generation',
                 'cleanup-input-generation',
                 queue,
-                #TaskParams(**base_kwargs),
             ),
         ])
 
