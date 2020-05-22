@@ -172,7 +172,7 @@ class BaseStorageConnector(object):
         self.logger.info('Store dir: {} -> {}'.format(directory_path, stored_fp))
         return os.path.join(storage_subdir, store_reference)
 
-    def extract(self, archive_fp, directory):
+    def extract(self, archive_fp, directory, storage_subdir=''):
         """ Extract tar file
 
         Parameters
@@ -182,12 +182,18 @@ class BaseStorageConnector(object):
 
         :param directory: Path to extract contents to.
         :type  directory: str
+
+        :param storage_subdir: Store object in given sub directory
+        :type  storage_subdir: str
         """
         temp_dir = tempfile.TemporaryDirectory()
         try:
             temp_dir_path = temp_dir.__enter__()
-            local_archive_path = self.get(archive_fp, os.path.join(temp_dir_path, os.path.basename(archive_fp)))
-
+            local_archive_path = self.get(
+                archive_fp, 
+                os.path.join(temp_dir_path, os.path.basename(archive_fp)),
+                subdir=storage_subdir
+            )
             with tarfile.open(local_archive_path) as f:
                 f.extractall(directory)
         finally:
@@ -268,9 +274,8 @@ class BaseStorageConnector(object):
                 subdir,
                 os.path.basename(reference)
             )
-            logging.info('fpath: {}'.format(fpath))
             if os.path.isfile(fpath):
-                logging.info('Get shared file: {}'.format(reference))
+                logging.info('Get shared file: {}'.format(fpath))
                 if output_path:
                     shutil.copy(fpath, output_path)
                 return os.path.abspath(fpath)

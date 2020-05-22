@@ -219,6 +219,10 @@ def keys_generation_task(fn):
                 if not user_data_path.exists():
                     user_data_path.mkdir(parents=True, exist_ok=True)
                     prepare_complex_model_file_inputs(complex_data_files, str(user_data_path))
+        try:
+            os.remove('{user_data_dir}.lock')
+        except OSError:
+            logging.info(f'Failed to remove {user_data_dir}.lock')
 
     def maybe_fetch_file(datafile, filepath):
         with filelock.FileLock(f'{filepath}.lock'):
@@ -227,29 +231,46 @@ def keys_generation_task(fn):
                 logging.info(f'filepath: {filepath}')
                 filestore.get(datafile, filepath)
         try:
-            # FileLock dosnt delete the file on release
             os.remove(f'{filepath}.lock')
         except OSError:
-            # Probably another instance of the application
-            # that acquired the file lock.
             logging.info(f'Failed to remove {filepath}.lock')
+
+    def log_task_entry(slug, request_id, analysis_id):
+        if slug:
+            logging.info('\n')
+            logging.info(f'====== {slug} '.ljust(90, '='))
+        notify_api_task_started(analysis_id, request_id, slug)
+
+    def log_params(params, kwargs):
+        exclude_keys = [
+            'fm_aggregation_profile',
+            'accounts_profile',
+            'oed_hierarchy',
+            'exposure_profile',
+            'lookup_config',
+        ]
+        print_params = {k: params[k] for k in set(list(params.keys())) - set(exclude_keys)}
+        logging.debug('keys_generation_task: \nparams={}, \nkwargs={}'.format(
+            json.dumps(print_params, indent=2),
+            json.dumps(kwargs, indent=2),
+        ))
 
     def _prepare_directories(params, analysis_id, run_data_uuid, kwargs):
         params['storage_subdir'] = f'analysis-{analysis_id}_files-{run_data_uuid}'
         params['root_run_dir'] = os.path.join(settings.get('worker', 'base_run_dir', fallback='/tmp/run'), params['storage_subdir'])
         Path(params['root_run_dir']).mkdir(parents=True, exist_ok=True)
 
-        # Set `oasis-file-generation` input files  
-        params.setdefault('target_dir', params['root_run_dir'])   
+        # Set `oasis-file-generation` input files
+        params.setdefault('target_dir', params['root_run_dir'])
         params.setdefault('exposure_fp', os.path.join(params['root_run_dir'], 'location.csv'))
         params.setdefault('user_data_dir', os.path.join(params['root_run_dir'], f'user-data'))
         params.setdefault('analysis_settings_fp', os.path.join(params['root_run_dir'], 'analysis_settings.json'))
 
-        # Generate keys files 
+        # Generate keys files
         params.setdefault('keys_fp', os.path.join(params['root_run_dir'], 'keys.csv'))
         params.setdefault('keys_errors_fp', os.path.join(params['root_run_dir'], 'keys-errors.csv'))
 
-        # Fetch keyword args 
+        # Fetch keyword args
         loc_file = kwargs.get('loc_file')
         acc_file = kwargs.get('acc_file')
         info_file = kwargs.get('info_file')
@@ -257,7 +278,7 @@ def keys_generation_task(fn):
         settings_file = kwargs.get('analysis_settings_file')
         complex_data_files = kwargs.get('complex_data_files')
 
-        # Prepare 'generate-oasis-files' input files 
+        # Prepare 'generate-oasis-files' input files
         if loc_file:
             maybe_fetch_file(loc_file, params['exposure_fp'])
 
@@ -281,22 +302,8 @@ def keys_generation_task(fn):
 
         log_params(params, kwargs)
 
-    def log_params(params, kwargs):
-        exclude_keys = [
-            'fm_aggregation_profile',
-            'accounts_profile',
-            'oed_hierarchy',
-            'exposure_profile',
-            'lookup_config',
-        ]    
-        print_params = {k: params[k] for k in set(list(params.keys())) - set(exclude_keys)}
-        logging.info('keys_generation Lazy load: \nparams={}, \nkwargs={}'.format(
-            json.dumps(print_params, indent=4),
-            json.dumps(kwargs, indent=4),
-        ))
-
     def run(self, params, *args, run_data_uuid=None, analysis_id=None, **kwargs):
-        
+        log_task_entry(kwargs.get('slug'), self.request.id, analysis_id)
         if isinstance(params, list):
             for p in params:
                 _prepare_directories(p, analysis_id, run_data_uuid, kwargs)
@@ -327,9 +334,6 @@ def prepare_input_generation_params(
     slug=None,
     **kwargs,
 ):
-    logging.info(" ==== prepare_input_generation_params ======================================")
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     model_id = settings.get('worker', 'model_id')
     config_path = get_oasislmf_config_path(model_id)
     config = get_json(config_path)
@@ -365,7 +369,6 @@ def prepare_keys_file_chunk(
     slug=None,
     **kwargs
 ):
-    logging.info(" ==== prepare_keys_file_chunk ({}) ==============================================".format(chunk_idx))
     notify_api_task_started(analysis_id, self.request.id, slug)
 
     with TemporaryDir() as chunk_target_dir:
@@ -429,11 +432,7 @@ def collect_keys(
     slug=None,
     **kwargs
  ):
-    logging.info(" ==== collect_keys =========================================================")
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     # Setup return params
-    
     chunk_params = {**params[0]}
     storage_subdir = chunk_params['storage_subdir']
     del chunk_params['chunk_keys']
@@ -503,7 +502,7 @@ def collect_keys(
 
         #if not <keep_files>:
         #    filestore.delete(storage_subdir)
-        #    DELETE 
+        #    DELETE
         #    storage_subdir
         # Remove all keys-chunks for storage
         #f for f in chunk_keys + chunk_errors:
@@ -516,14 +515,10 @@ def collect_keys(
 @task(bind=True, name='write_input_files')
 @keys_generation_task
 def write_input_files(self, params, run_data_uuid=None, analysis_id=None, initiator_id=None, slug=None, **kwargs):
-    logging.info(" ==== write_input_files ====================================================")
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     params['keys_fp'] = filestore.get(params['keys_ref'], params['target_dir'], subdir=params['storage_subdir'])
     params['keys_errors_fp'] = filestore.get(params['keys_error_ref'], params['target_dir'], subdir=params['storage_subdir'])
     OasisManager().prepare_input_directory(**params)
     OasisManager().write_input_files(**params)
-
 
     return {
         'lookup_error_location': filestore.put(os.path.join(params['target_dir'], 'keys-errors.csv')),
@@ -535,10 +530,8 @@ def write_input_files(self, params, run_data_uuid=None, analysis_id=None, initia
 
 
 @task(bind=True, name='cleanup_input_generation')
+@keys_generation_task
 def cleanup_input_generation(self, params, analysis_id=None, initiator_id=None, run_data_uuid=None, slug=None):
-    logging.info("\n ---- cleanup_input_generation ---------------------------------------------")
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     if not settings.getboolean('worker', 'KEEP_RUN_DIR', fallback=False):
         shutil.rmtree(params['target_dir'], ignore_errors=True)
 
@@ -554,12 +547,12 @@ def cleanup_input_generation(self, params, analysis_id=None, initiator_id=None, 
 
 
 def loss_generation_task(fn):
-    def maybe_extract_tar(filestore_ref, dst):
+    def maybe_extract_tar(filestore_ref, dst, storage_subdir=''):
         logging.info(f'filestore_ref: {filestore_ref}')
         logging.info(f'dst: {dst}')
         with filelock.FileLock(f'{dst}.lock'):
             if not Path(dst).exists():
-                filestore.extract(filestore_ref, dst)
+                filestore.extract(filestore_ref, dst, storage_subdir)
 
     def maybe_prepare_complex_data_files(complex_data_files, user_data_dir):
         with filelock.FileLock(f'{user_data_dir}.lock'):
@@ -568,6 +561,10 @@ def loss_generation_task(fn):
                 if not user_data_path.exists():
                     user_data_path.mkdir(parents=True, exist_ok=True)
                     prepare_complex_model_file_inputs(complex_data_files, str(user_data_path))
+        try:
+            os.remove(f'{user_data_dir}.lock')
+        except OSError:
+            logging.info(f'Failed to remove {user_data_dir}.lock')
 
     def maybe_fetch_analysis_settings(analysis_settings_file, analysis_settings_fp):
         with filelock.FileLock(f'{analysis_settings_fp}.lock'):
@@ -575,9 +572,28 @@ def loss_generation_task(fn):
                 logging.info(f'analysis_settings_file: {analysis_settings_file}')
                 logging.info(f'analysis_settings_fp: {analysis_settings_fp}')
                 filestore.get(analysis_settings_file, analysis_settings_fp)
+        try:
+            os.remove(f'{analysis_settings_fp}.lock')
+        except OSError:
+            logging.info(f'Failed to remove {analysis_settings_fp}.lock')
+
+    def log_task_entry(slug, request_id, analysis_id):
+        if slug:
+            logging.info('\n')
+            logging.info(f'====== {slug} '.ljust(90, '='))
+        notify_api_task_started(analysis_id, request_id, slug)
+
+    def log_params(params, kwargs):
+        exclude_keys = []
+        print_params = {k: params[k] for k in set(list(params.keys())) - set(exclude_keys)}
+        logging.debug('loss_generation_task: \nparams={}, \nkwargs={}'.format(
+            json.dumps(print_params, indent=4),
+            json.dumps(kwargs, indent=4),
+        ))
 
     def _prepare_directories(params, analysis_id, run_data_uuid, kwargs):
-        params['root_run_dir'] = os.path.join(settings.get('worker', 'base_run_dir', fallback='/tmp/run'), f'analysis-{analysis_id}_losses-{run_data_uuid}')
+        params['storage_subdir'] = f'analysis-{analysis_id}_losses-{run_data_uuid}'
+        params['root_run_dir'] = os.path.join(settings.get('worker', 'base_run_dir', fallback='/tmp/run'), params['storage_subdir'])
         Path(params['root_run_dir']).mkdir(parents=True, exist_ok=True)
 
         params.setdefault('oasis_fp', os.path.join(params['root_run_dir'], f'input-data'))
@@ -598,6 +614,7 @@ def loss_generation_task(fn):
             maybe_extract_tar(
                 run_location,
                 params['model_run_fp'],
+                params['storage_subdir'],
             )
 
         complex_data_files = kwargs.get('complex_data_files')
@@ -613,19 +630,15 @@ def loss_generation_task(fn):
                 analysis_settings_file,
                 params['analysis_settings_fp']
             )
+        log_params(params, kwargs)
 
     def run(self, params, *args, run_data_uuid=None, analysis_id=None, **kwargs):
+        log_task_entry(kwargs.get('slug'), self.request.id, analysis_id)
         if isinstance(params, list):
             for p in params:
                 _prepare_directories(p, analysis_id, run_data_uuid, kwargs)
         else:
             _prepare_directories(params, analysis_id, run_data_uuid, kwargs)
-
-        logging.info('losse_generation Lazy load: params={}, args={}, kwargs={}'.format(
-            json.dumps(params, indent=4),
-            json.dumps(args, indent=4),
-            json.dumps(kwargs, indent=4),
-        ))
         return fn(self, params, *args, analysis_id=analysis_id, **kwargs)
 
     return run
@@ -641,8 +654,6 @@ def prepare_losses_generation_params(
     num_chunks=None,
     **kwargs,
 ):
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     model_id = settings.get('worker', 'model_id')
     config_path = get_oasislmf_config_path(model_id)
     config = get_json(config_path)
@@ -664,21 +675,18 @@ def prepare_losses_generation_params(
 @task(bind=True, name='prepare_losses_generation_directory')
 @loss_generation_task
 def prepare_losses_generation_directory(self, params, analysis_id=None, slug=None, **kwargs):
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     params['analysis_settings'] = OasisManager().prepare_run_directory(**params)
-
-    # store the run dir in the file store
-    params['run_location'] = filestore.put(params['model_run_fp'])
-
+    params['run_location'] = filestore.put(
+        params['model_run_fp'],
+        filename='run_directory.tar.gz',
+        subdir=params['storage_subdir']
+    )
     return params
 
 
 @task(bind=True, name='generate_losses_chunk')
 @loss_generation_task
 def generate_losses_chunk(self, params, chunk_idx, num_chunks, analysis_id=None, slug=None, **kwargs):
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     chunk_params = {
         **params,
         'process_number': chunk_idx,
@@ -693,8 +701,16 @@ def generate_losses_chunk(self, params, chunk_idx, num_chunks, analysis_id=None,
 
     return {
         **params,
-        'chunk_work_location': filestore.put(params['ktools_work_dir']),
-        'chunk_fifo_location': filestore.put(params['ktools_fifo_queue_dir']),
+        'chunk_work_location': filestore.put(
+            params['ktools_work_dir'],
+            filename=f'work-{chunk_idx}.tar.gz',
+            subdir=params['storage_subdir']
+        ),
+        'chunk_fifo_location': filestore.put(
+            params['ktools_fifo_queue_dir'],
+            filename=f'fifo-{chunk_idx}.tar.gz',
+            subdir=params['storage_subdir']
+        ),
         'chunk_script_path': chunk_params['script_fp'],
         'process_number': chunk_idx + 1,
     }
@@ -703,9 +719,7 @@ def generate_losses_chunk(self, params, chunk_idx, num_chunks, analysis_id=None,
 @task(bind=True, name='generate_losses_output')
 @loss_generation_task
 def generate_losses_output(self, params, analysis_id=None, slug=None, **kwargs):
-    notify_api_task_started(analysis_id, self.request.id, slug)
     res = {**params[0]}
-
     abs_fifo_dir = os.path.join(
         res['model_run_fp'],
         res['ktools_fifo_queue_dir'],
@@ -721,11 +735,11 @@ def generate_losses_output(self, params, analysis_id=None, slug=None, **kwargs):
     # collect the run results
     for p in params:
         with TemporaryDir() as d:
-            filestore.extract(p['chunk_work_location'], d)
+            filestore.extract(p['chunk_work_location'], d, p['storage_subdir'])
             merge_dirs(d, abs_work_dir)
 
         with TemporaryDir() as d:
-            filestore.extract(p['chunk_fifo_location'], d)
+            filestore.extract(p['chunk_fifo_location'], d, p['storage_subdir'])
             merge_dirs(d, abs_fifo_dir)
 
     OasisManager().run_loss_outputs(**res)
@@ -741,9 +755,8 @@ def generate_losses_output(self, params, analysis_id=None, slug=None, **kwargs):
 
 
 @task(bind=True, name='cleanup_losses_generation')
+@loss_generation_task
 def cleanup_losses_generation(self, params, analysis_id=None, slug=None, **kwargs):
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     if not settings.getboolean('worker', 'KEEP_RUN_DIR', fallback=False):
         shutil.rmtree(params['root_run_dir'], ignore_errors=True)
 
