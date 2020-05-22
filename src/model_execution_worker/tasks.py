@@ -369,8 +369,6 @@ def prepare_keys_file_chunk(
     slug=None,
     **kwargs
 ):
-    notify_api_task_started(analysis_id, self.request.id, slug)
-
     with TemporaryDir() as chunk_target_dir:
         lookup_config = params['lookup_config']
         if lookup_config and lookup_config['keys_data_path'] in ['.', './']:
