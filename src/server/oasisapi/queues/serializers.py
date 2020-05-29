@@ -16,7 +16,7 @@ class QueueSerializer(serializers.Serializer):
 
     @swagger_serializer_method(serializer_or_field=AnalysisModelSerializer)
     def get_models(self, instance, *args, **kwargs):
-        models = AnalysisModel.objects.filter(queue_associations__queue_name=instance['name']).distinct()
+        models = [m for m in AnalysisModel.objects.all() if str(m) == instance['name']]
         return AnalysisModelSerializer(instance=models, many=True).data
 
 class WebsocketSerializer(serializers.Serializer):
@@ -28,6 +28,7 @@ class WebsocketSerializer(serializers.Serializer):
     updated_tasks = serializers.SerializerMethodField()
     time = serializers.DateField()
     type = serializers.CharField()
+    status = serializers.CharField()
 
     @swagger_serializer_method(serializer_or_field=QueueSerializer)
     def get_queue(self, instance, *args, **kwargs):
