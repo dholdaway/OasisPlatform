@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from src.server.oasisapi.analysis_models.models import AnalysisModel
 from src.server.oasisapi.analysis_models.serializers import AnalysisModelSerializer
+from src.server.oasisapi.analyses.serializers import AnalysisSerializer, AnalysisTaskStatusSerializer
 
 
 class QueueSerializer(serializers.Serializer):
@@ -17,3 +18,23 @@ class QueueSerializer(serializers.Serializer):
     def get_models(self, instance, *args, **kwargs):
         models = AnalysisModel.objects.filter(queue_associations__queue_name=instance['name']).distinct()
         return AnalysisModelSerializer(instance=models, many=True).data
+
+class WebsocketSerializer(serializers.Serializer):
+    """ This is a 'dummy' Serializer to document 
+    the WebSocket  schema 
+    """
+    queue = serializers.SerializerMethodField()
+    analyses = serializers.SerializerMethodField()
+    updated_tasks = serializers.SerializerMethodField()
+    time = serializers.DateField()
+    type = serializers.CharField()
+
+    @swagger_serializer_method(serializer_or_field=QueueSerializer)
+    def get_queue(self, instance, *args, **kwargs):
+        pass
+    @swagger_serializer_method(serializer_or_field=AnalysisSerializer(many=True))
+    def get_analyses(self, instance, *args, **kwargs):
+        pass
+    @swagger_serializer_method(serializer_or_field=AnalysisTaskStatusSerializer(many=True))
+    def get_updated_tasks(self, instance, *args, **kwargs):
+        pass

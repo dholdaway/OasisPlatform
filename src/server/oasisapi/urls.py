@@ -14,6 +14,7 @@ from .data_files.viewsets import DataFileViewset
 from .info.views import PerilcodesView
 from .info.views import ServerInfoView
 from .queues.viewsets import QueueViewSet
+from .queues.viewsets import WebsocketViewSet
 
 admin.autodiscover()
 #app_name = 'oasisapi'
@@ -25,7 +26,8 @@ api_router.register('analyses', AnalysisViewSet, basename='analysis')
 api_router.register('analysis-task-statuses', AnalysisTaskStatusViewSet, basename='analysis-task-status')
 api_router.register('models', AnalysisModelViewSet, basename='analysis-model')
 api_router.register('data_files', DataFileViewset, basename='data-file')
-api_router.register('queues', QueueViewSet, basename='queue')
+api_router.register('queue', QueueViewSet, basename='queue')
+api_router.register('queue-status', WebsocketViewSet, basename='queue')
 # api_router.register('files', FilesViewSet, basename='file')
 
 

@@ -15,6 +15,8 @@ def echo(app, message):
     print('Message received:')
     print(json.dumps(json.loads(message), indent=4))
 
+def on_error(app, error):
+    print(error)
 
 class Command(BaseCommand):
     def add_arguments(self, parser):
@@ -31,6 +33,7 @@ class Command(BaseCommand):
         app = WebSocketApp(
             options['url'],
             on_message=echo,
+            on_error=on_error,
             header=[
                 f'Authorization: Bearer {acc_token}',
             ]
