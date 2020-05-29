@@ -62,6 +62,7 @@ logging.info("KTOOLS_ALLOC_RULE_RI: {}".format(settings.get('worker', 'KTOOLS_AL
 logging.info("KTOOLS_ERROR_GUARD: {}".format(settings.get('worker', 'KTOOLS_ERROR_GUARD', fallback=True)))
 logging.info("DEBUG_MODE: {}".format(settings.get('worker', 'DEBUG_MODE', fallback=False)))
 logging.info("KEEP_RUN_DIR: {}".format(settings.get('worker', 'KEEP_RUN_DIR', fallback=False)))
+logging.info("KEEP_CHUNK_DATA: {}".format(settings.get('worker', 'KEEP_CHUNK_DATA', fallback=False)))
 logging.info("BASE_RUN_DIR: {}".format(settings.get('worker', 'BASE_RUN_DIR', fallback=None)))
 logging.info("DISABLE_EXPOSURE_SUMMARY: {}".format(settings.get('worker', 'DISABLE_EXPOSURE_SUMMARY', fallback=False)))
 
@@ -250,10 +251,11 @@ def keys_generation_task(fn):
             'lookup_config',
         ]
         print_params = {k: params[k] for k in set(list(params.keys())) - set(exclude_keys)}
-        logging.debug('keys_generation_task: \nparams={}, \nkwargs={}'.format(
-            json.dumps(print_params, indent=2),
-            json.dumps(kwargs, indent=2),
-        ))
+        if settings.get('worker', 'DEBUG_MODE', fallback=False):
+            logging.info('keys_generation_task: \nparams={}, \nkwargs={}'.format(
+                json.dumps(print_params, indent=2),
+                json.dumps(kwargs, indent=2),
+            ))
 
     def _prepare_directories(params, analysis_id, run_data_uuid, kwargs):
         params['storage_subdir'] = f'analysis-{analysis_id}_files-{run_data_uuid}'
@@ -497,16 +499,6 @@ def collect_keys(
         else:
             chunk_params['keys_errors_ref'] = None
 
-
-        #if not <keep_files>:
-        #    filestore.delete(storage_subdir)
-        #    DELETE
-        #    storage_subdir
-        # Remove all keys-chunks for storage
-        #f for f in chunk_keys + chunk_errors:
-        #    filestore.delete(f ... )
-
-
     return chunk_params
 
 
@@ -531,10 +523,11 @@ def write_input_files(self, params, run_data_uuid=None, analysis_id=None, initia
 @keys_generation_task
 def cleanup_input_generation(self, params, analysis_id=None, initiator_id=None, run_data_uuid=None, slug=None):
     if not settings.getboolean('worker', 'KEEP_RUN_DIR', fallback=False):
+        # Delete local copy of run data 
         shutil.rmtree(params['target_dir'], ignore_errors=True)
-
-        if params['user_data_dir']:
-            shutil.rmtree(params['user_data_dir'], ignore_errors=True)
+    if not settings.getboolean('worker', 'KEEP_CHUNK_DATA', fallback=False):
+        # Delete remote copy of run data
+        filestore.delete_dir(params['storage_subdir'])
 
     return params
 
@@ -584,10 +577,11 @@ def loss_generation_task(fn):
     def log_params(params, kwargs):
         exclude_keys = []
         print_params = {k: params[k] for k in set(list(params.keys())) - set(exclude_keys)}
-        logging.debug('loss_generation_task: \nparams={}, \nkwargs={}'.format(
-            json.dumps(print_params, indent=4),
-            json.dumps(kwargs, indent=4),
-        ))
+        if settings.get('worker', 'DEBUG_MODE', fallback=False):
+            logging.info('loss_generation_task: \nparams={}, \nkwargs={}'.format(
+                json.dumps(print_params, indent=4),
+                json.dumps(kwargs, indent=4),
+            ))
 
     def _prepare_directories(params, analysis_id, run_data_uuid, kwargs):
         params['storage_subdir'] = f'analysis-{analysis_id}_losses-{run_data_uuid}'
@@ -704,11 +698,6 @@ def generate_losses_chunk(self, params, chunk_idx, num_chunks, analysis_id=None,
             filename=f'work-{chunk_idx}.tar.gz',
             subdir=params['storage_subdir']
         ),
-        'chunk_fifo_location': filestore.put(
-            params['ktools_fifo_queue_dir'],
-            filename=f'fifo-{chunk_idx}.tar.gz',
-            subdir=params['storage_subdir']
-        ),
         'chunk_script_path': chunk_params['script_fp'],
         'process_number': chunk_idx + 1,
     }
@@ -736,10 +725,6 @@ def generate_losses_output(self, params, analysis_id=None, slug=None, **kwargs):
             filestore.extract(p['chunk_work_location'], d, p['storage_subdir'])
             merge_dirs(d, abs_work_dir)
 
-        with TemporaryDir() as d:
-            filestore.extract(p['chunk_fifo_location'], d, p['storage_subdir'])
-            merge_dirs(d, abs_fifo_dir)
-
     OasisManager().run_loss_outputs(**res)
     res['bash_trace'] = '\n\n'.join(
         f'Analysis Chunk {idx}:\n{chunk["bash_trace"]}' for idx, chunk in enumerate(params)
@@ -756,7 +741,11 @@ def generate_losses_output(self, params, analysis_id=None, slug=None, **kwargs):
 @loss_generation_task
 def cleanup_losses_generation(self, params, analysis_id=None, slug=None, **kwargs):
     if not settings.getboolean('worker', 'KEEP_RUN_DIR', fallback=False):
+        # Delete local copy of run data 
         shutil.rmtree(params['root_run_dir'], ignore_errors=True)
+    if not settings.getboolean('worker', 'KEEP_CHUNK_DATA', fallback=False):
+        # Delete remote copy of run data
+        filestore.delete_dir(params['storage_subdir'])
 
     return params
 

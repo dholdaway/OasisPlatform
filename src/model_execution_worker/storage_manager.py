@@ -7,6 +7,7 @@ import tarfile
 import tempfile
 import uuid
 
+from pathlib import Path
 from urllib.parse import urlparse, urlsplit, parse_qsl
 from urllib.request import urlopen
 
@@ -247,24 +248,30 @@ class BaseStorageConnector(object):
 
             header_fname = response.headers.get('Content-Disposition', '').split('filename=')[-1]
             fname = header_fname if header_fname else os.path.basename(urlparse(reference).path)
+
             if os.path.isdir(output_path):
                 fpath = os.path.join(output_path, fname)
             else:
                 fpath = output_path
 
+            # Check and copy file if cached
             if self.cache_root:
                 cached_file = os.path.join(self.cache_root, fname)
                 if os.path.isfile(cached_file):
                     logging.info('Get from Cache: {}'.format(fname))
-                    return os.path.abspath(cached_file)
-                else:
-                    os.makedirs(self.cache_root, exist_ok=True)
-                    fpath = cached_file
+                    shutil.copy(cached_file, fpath)
+                    return os.path.abspath(fpath)
 
+            # Download if not cached
             os.makedirs(os.path.dirname(fpath), exist_ok=True)
             with io.open(fpath, 'w+b') as f:
                 f.write(fdata)
                 logging.info('Get from URL: {}'.format(fname))
+            
+            # Store in cache if enabled 
+            if self.cache_root:
+                os.makedirs(self.cache_root, exist_ok=True)
+                shutil.copy(fpath, cached_file)
 
             return os.path.abspath(fpath)
 
@@ -336,13 +343,41 @@ class BaseStorageConnector(object):
         else:
             return None
 
-    def delete(self, reference):
+    def delete_file(self, reference):
         """
-        #
-        # Method to delete from shared-fd / aws-s3
-        #   - add Try and catch in case of permisions error
+        Delete single file from shared storage
+
+        :param reference: Path to `File`
+        :type  reference: str
         """
-        pass
+
+        ref_path = os.path.join(self.media_root, os.path.basename(reference))
+        if os.path.isfile(ref_path):
+            os.remove(ref_path)
+            logging.info('Deleted Shared file: {}'.format(ref_path))
+        else:
+            logging.info('Delete Error - Unknwon reference {}'.format(reference))
+
+
+    def delete_dir(self, reference):
+        """
+        Delete subdirectory from shared storage
+
+        :param reference: Path to `Directory`
+        :type  reference: str
+        """
+        ref_path = os.path.join(self.media_root, os.path.basename(reference))
+        if os.path.isdir(ref_path):
+            root = Path(self.media_root)
+            subdir = Path(ref_path)
+            if root == subdir:
+                logging.info('Delete Error - prevented media root deletion')
+            else:
+                shutil.rmtree(ref_path, ignore_errors=True)
+                logging.info('Deleted shared dir: {}'.format(ref_path))
+        else:
+            logging.info('Delete Error - Unknwon reference {}'.format(reference))
+
 
     def create_traceback(self, subprocess_run, output_dir=""):
         traceback_file = self._get_unique_filename(LOG_FILE_SUFFIX)
@@ -456,7 +491,7 @@ class AwsObjectStore(BaseStorageConnector):
             self._bucket = self.connection.Bucket(self.bucket_name)
         return self._bucket
 
-    def _store_file(self, file_path, storage_fname, storage_subdir, suffix=None):
+    def _store_file(self, file_path, storage_fname, storage_subdir, suffix=None, **kwargs):
         """ Overloaded function for AWS file storage
 
         Uploads the Object pointed to by `file_path`
@@ -523,7 +558,7 @@ class AwsObjectStore(BaseStorageConnector):
         object_name = os.path.join(storage_subdir, filename)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            archive_path = os.path.join(tmpdir, object_name)
+            archive_path = os.path.join(tmpdir, filename)
             self.compress(archive_path, directory_path, arcname)
             self.upload(object_name, archive_path)
 
@@ -605,6 +640,45 @@ class AwsObjectStore(BaseStorageConnector):
             return url
         else:
             return self._strip_signing_parameters(url)
+
+    def delete_file(self, reference):
+        """ Delete single Onject from S3 where
+            reference = object key 
+        """
+
+        del_request = { 
+            'Objects': [{'Key': os.path.join(self.location, reference)}],
+            'Quiet': False 
+        }  
+        rsp = self.bucket.delete_objects(Delete=del_request)
+        errors = rsp.get('Errors')
+        deleted = rsp.get('Delete')
+
+        if errors:
+            self.logger.info(errors)
+        if deleted and not errors:
+            self.logger.info('Delete S3: {}'.format([obj['Key'] for obj in deleted]))
+
+    def delete_dir(self, reference):
+        """ Delete multiple Objects from S3 where
+            'reference' is used to match keys of multiple stored Objects
+        """
+
+        key_prefix = os.path.join(self.location, reference)
+        matching_obj = [{'Key':o.key} for o in self.bucket.objects.filter(Prefix=key_prefix)]
+        del_request = { 
+            'Objects': matching_obj,
+            'Quiet': False 
+        }  
+        rsp = self.bucket.delete_objects(Delete=del_request)
+        self.logger.info(rsp)
+        errors = rsp.get('Errors')
+        deleted = rsp.get('Delete')
+
+        if errors:
+            self.logger.info(errors)
+        if deleted and not errors:
+            self.logger.info('Delete S3: {}'.format([obj['Key'] for obj in deleted]))
 
     def upload(self, object_name, filepath, ExtraArgs=None):
         """ Wrapper for BOTO3 bucket upload

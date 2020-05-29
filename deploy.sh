@@ -1,10 +1,12 @@
 #!/bin/bash
+export OASIS_MODEL_DATA_DIR=<..path to piwind ..>
+export API_TAG=local-ver
 
-export OASIS_MODEL_DATA_DIR=<..path to piwind ..>F
+docker rmi coreoasis/api_server:$API_TAG
+docker rmi coreoasis/model_worker:$API_TAG
 
-docker rmi coreoasis/api_server:latest
-docker rmi coreoasis/model_worker:latest
+set -e 
+docker build -f Dockerfile.api_server -t coreoasis/api_server:$API_TAG .
+docker build -f Dockerfile.model_worker -t coreoasis/model_worker:$API_TAG .
 
-docker build -f Dockerfile.api_server -t coreoasis/api_server .
-docker build -f Dockerfile.model_worker -t coreoasis/model_worker .
-docker-compose up -d --no-build worker-monitor channel-layer celery-beat task-controller server
+docker-compose up -d --no-build worker-monitor channel-layer celery-beat task-controller server worker
