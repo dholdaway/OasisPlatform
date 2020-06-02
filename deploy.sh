@@ -9,4 +9,4 @@ set -e
 docker build -f Dockerfile.api_server -t coreoasis/api_server:$API_TAG .
 docker build -f Dockerfile.model_worker -t coreoasis/model_worker:$API_TAG .
 
-docker-compose up -d --no-build worker-monitor channel-layer celery-beat task-controller server worker
+docker-compose -f tag.docker-compose.yml up -d --no-build worker-monitor channel-layer celery-beat task-controller server worker
