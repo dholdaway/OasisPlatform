@@ -351,6 +351,8 @@ def prepare_input_generation_params(
     params = OasisManager().prepare_input_generation_params(
         target_dir=params['target_dir'],
         exposure_fp=params['exposure_fp'],
+        model_version_fp=config.get('model_version_csv', None),
+        lookup_package_fp=config.get('lookup_package_dir', None),
         lookup_config_fp=lookup_config_json,
         summarise_exposure=not settings.getboolean('worker', 'DISABLE_EXPOSURE_SUMMARY', fallback=False),
         multiprocessing=multiprocessing,
