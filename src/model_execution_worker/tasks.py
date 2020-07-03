@@ -509,8 +509,11 @@ def collect_keys(
 def write_input_files(self, params, run_data_uuid=None, analysis_id=None, initiator_id=None, slug=None, **kwargs):
     params['keys_fp'] = filestore.get(params['keys_ref'], params['target_dir'], subdir=params['storage_subdir'])
     params['keys_errors_fp'] = filestore.get(params['keys_error_ref'], params['target_dir'], subdir=params['storage_subdir'])
+    params['fm_aggregation_profile'] = {int(k): v for k, v in params['fm_aggregation_profile'].items()}
+    OasisManager().prepare_input_generation_params(**params)
     OasisManager().prepare_input_directory(**params)
     OasisManager().write_input_files(**params)
+
 
     return {
         'lookup_error_location': filestore.put(os.path.join(params['target_dir'], 'keys-errors.csv')),
