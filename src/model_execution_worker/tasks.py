@@ -657,6 +657,8 @@ def prepare_losses_generation_params(
 
     return OasisManager().prepare_loss_generation_params(
         model_data_fp=os.path.join(os.path.dirname(config_path), config['model_data_dir']),
+        model_package_fp=os.path.join(os.path.dirname(config_path), config['model_package_dir']),
+        model_custom_gulcalc=config['model_custom_gulcalc'],
         ktools_error_guard=settings.getboolean('worker', 'KTOOLS_ERROR_GUARD', fallback=True),
         ktools_debug=settings.getboolean('worker', 'DEBUG_MODE', fallback=False),
         ktools_fifo_queue_dir=os.path.join(params['model_run_fp'], 'fifo'),
@@ -686,7 +688,7 @@ def prepare_losses_generation_directory(self, params, analysis_id=None, slug=Non
 def generate_losses_chunk(self, params, chunk_idx, num_chunks, analysis_id=None, slug=None, **kwargs):
     chunk_params = {
         **params,
-        'process_number': chunk_idx,
+        'process_number': chunk_idx+1,
         'script_fp': f'{params["script_fp"]}.{chunk_idx}',
         'ktools_fifo_queue_dir': os.path.join(params['model_run_fp'], 'fifo'),
         'ktools_work_dir': os.path.join(params['model_run_fp'], 'work'),
