@@ -656,9 +656,9 @@ def prepare_losses_generation_params(
     config = get_json(config_path)
 
     return OasisManager().prepare_loss_generation_params(
-        model_data_fp=os.path.join(os.path.dirname(config_path), config['model_data_dir']),
-        model_package_fp=os.path.join(os.path.dirname(config_path), config['model_package_dir']),
-        model_custom_gulcalc=config['model_custom_gulcalc'],
+        model_data_fp=config.get('model_data_dir'),
+        model_package_fp=config.get('model_package_dir'),
+        model_custom_gulcalc=config.get('model_custom_gulcalc'),
         ktools_error_guard=settings.getboolean('worker', 'KTOOLS_ERROR_GUARD', fallback=True),
         ktools_debug=settings.getboolean('worker', 'DEBUG_MODE', fallback=False),
         ktools_fifo_queue_dir=os.path.join(params['model_run_fp'], 'fifo'),
